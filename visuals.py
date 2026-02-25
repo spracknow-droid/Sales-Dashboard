@@ -2,7 +2,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import pandas as pd
 
-# 1) 시간 흐름에 따른 매출 추이 (월별 합계 버전)
+# 1) 시간 흐름에 따른 매출 추이 (월별 합계)
 def plot_sales_trend(df):
     if df.empty:
         return go.Figure().update_layout(title="데이터가 없습니다.")
@@ -18,46 +18,52 @@ def plot_sales_trend(df):
     fig = px.line(df_monthly, 
                   x='연월', 
                   y='매출액', 
-                  title='월별 매출 실적 추이 (판매실적 기준)',
+                  title='월별 매출 실적 추이',
                   markers=True, 
                   template='plotly_white')
     
-    # 포인트 위에 금액 표시
+    # 포인트 위에 금액 표시 및 선 스타일 조정
     fig.update_traces(text=df_monthly['매출액'].apply(lambda x: f'{x:,.0f}'),
                       textposition="top center",
-                      mode='lines+markers+text')
+                      mode='lines+markers+text',
+                      line=dict(width=3, color='royalblue'))
     
+    fig.update_layout(hovermode="x unified")
     fig.update_xaxes(title_text='연월')
     fig.update_yaxes(title_text='매출액 합계')
     
     return fig
 
-# 2) 기준 시점 비교 막대 그래프 (실적 vs 계획 등)
+# 2) 기준 시점 비교 막대 그래프 (선택 월의 실적 vs 계획)
 def plot_comparison(df, val1, val2, label1, label2):
+    # 막대 그래프 생성: x축을 ['실적', '계획']으로 고정하여 나란히 배치
     fig = go.Figure(data=[
         go.Bar(
-            name=label1, 
-            x=[label1], 
+            name='실적', 
+            x=['실적 vs 계획'], # 같은 x축 그룹으로 묶음
             y=[val1], 
             text=f"{val1:,.0f}", 
             textposition='outside',
-            marker_color='royalblue'
+            marker_color='royalblue',
+            offsetgroup=0
         ),
         go.Bar(
-            name=label2, 
-            x=[label2], 
+            name='계획', 
+            x=['실적 vs 계획'], 
             y=[val2], 
             text=f"{val2:,.0f}", 
             textposition='outside',
-            marker_color='lightslategray'
+            marker_color='lightslategray',
+            offsetgroup=1
         )
     ])
     
     fig.update_layout(
-        title=f'{label1} vs {label2} 전체 합계 비교',
+        title=f'월간 상세 비교 ({label1.split(" ")[0]})',
         barmode='group',
         template='plotly_white',
-        yaxis=dict(title='금액')
+        yaxis=dict(title='금액'),
+        showlegend=True
     )
     return fig
 
@@ -73,7 +79,7 @@ def plot_pie_chart(df, column):
     total_sales = df_pie['매출액'].sum()
     df_pie['percent'] = (df_pie['매출액'] / total_sales) * 100
     
-    # [수정] 5% 미만 항목을 '기타(Etc)'로 통합하는 로직
+    # 5% 미만 항목을 '기타(Etc)'로 통합
     major_items = df_pie[df_pie['percent'] >= 5].copy()
     minor_items = df_pie[df_pie['percent'] < 5]
     
@@ -88,16 +94,19 @@ def plot_pie_chart(df, column):
     else:
         df_final = major_items
     
-    # 내림차순 정렬 (기타 항목 유무와 관계없이 금액순)
+    # 내림차순 정렬
     df_final = df_final.sort_values('매출액', ascending=False)
     
     fig = px.pie(df_final, 
                  values='매출액', 
                  names=column, 
                  title=f'{column}별 매출 비중 (5% 미만 기타 처리)',
-                 hole=0.4) 
+                 hole=0.45) 
     
-    fig.update_traces(textinfo='percent+label', pull=[0.02] * len(df_final))
-    fig.update_layout(showlegend=True)
+    fig.update_traces(textinfo='percent+label', 
+                      pull=[0.02] * len(df_final),
+                      marker=dict(line=dict(color='#000000', width=1)))
+    
+    fig.update_layout(showlegend=True, template='plotly_white')
     
     return fig
