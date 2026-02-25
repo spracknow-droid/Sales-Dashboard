@@ -71,13 +71,26 @@ if uploaded_file:
                 
             with tab3:
                 st.subheader("3) 항목별 실적 비중")
-                category_options = [col for col in actual_df.columns if col not in ['날짜', '매출액', '장부금액', '데이터구분', '매출일', '계획년월', '연월']]
-                category_col = st.selectbox("분석 기준 컬럼 선택", category_options if category_options else actual_df.columns)
                 
-                if not actual_df.empty:
-                    st.plotly_chart(plot_pie_chart(actual_df, category_col), use_container_width=True)
+                # 분석에서 제외할 컬럼 리스트 (기술적 항목 및 불필요한 항목)
+                exclude_cols = [
+                    '날짜', '매출액', '장부금액', '데이터구분', '매출일', '계획년월', '연월',
+                    'WBS번호', 'SET모품목', '사업부', '부가세사업장', '세무분류', 
+                    '제품군', '수출신고번호', 'L_C번호', 'B_L번호'
+                ]
+                
+                # 제외 목록을 뺀 나머지 컬럼만 필터링
+                category_options = [col for col in actual_df.columns if col not in exclude_cols]
+                
+                if category_options:
+                    category_col = st.selectbox("분석 기준 컬럼 선택", category_options)
+                    
+                    if not actual_df.empty:
+                        st.plotly_chart(plot_pie_chart(actual_df, category_col), use_container_width=True)
+                    else:
+                        st.warning("비중을 계산할 실적 데이터가 없습니다.")
                 else:
-                    st.warning("비중을 계산할 실적 데이터가 없습니다.")
+                    st.info("분석 가능한 항목 컬럼이 없습니다.")
 
             # 데이터 테이블 확인
             with st.expander("표준화된 데이터 미리보기"):
