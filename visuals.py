@@ -10,7 +10,7 @@ def plot_sales_trend(df):
     # 데이터 복사 및 정렬
     df_plot = df.copy().sort_values('날짜')
     
-    # [수정] 날짜에서 '연-월' 추출하여 그룹화
+    # 날짜에서 '연-월' 추출하여 그룹화
     df_plot['연월'] = df_plot['날짜'].dt.to_period('M').astype(str)
     df_monthly = df_plot.groupby('연월')['매출액'].sum().reset_index()
     
@@ -22,7 +22,7 @@ def plot_sales_trend(df):
                   markers=True, 
                   template='plotly_white')
     
-    # 포인트 위에 금액 표시 (가독성을 위해 수치 추가)
+    # 포인트 위에 금액 표시
     fig.update_traces(text=df_monthly['매출액'].apply(lambda x: f'{x:,.0f}'),
                       textposition="top center",
                       mode='lines+markers+text')
@@ -34,7 +34,6 @@ def plot_sales_trend(df):
 
 # 2) 기준 시점 비교 막대 그래프 (실적 vs 계획 등)
 def plot_comparison(df, val1, val2, label1, label2):
-    # 값의 차이를 직관적으로 보기 위해 막대 그래프 구성
     fig = go.Figure(data=[
         go.Bar(
             name=label1, 
@@ -62,7 +61,7 @@ def plot_comparison(df, val1, val2, label1, label2):
     )
     return fig
 
-# 3) 비중 파이 그래프
+# 3) 비중 파이 그래프 (5% 미만 항목 기타 처리)
 def plot_pie_chart(df, column):
     if df.empty or column not in df.columns:
         return go.Figure().update_layout(title="데이터가 없거나 컬럼이 존재하지 않습니다.")
@@ -70,16 +69,35 @@ def plot_pie_chart(df, column):
     # 항목별 매출 합산
     df_pie = df.groupby(column)['매출액'].sum().reset_index()
     
-    # 비중이 너무 작은 항목이 많을 수 있으므로 내림차순 정렬
-    df_pie = df_pie.sort_values('매출액', ascending=False)
+    # 전체 매출액 대비 비중 계산
+    total_sales = df_pie['매출액'].sum()
+    df_pie['percent'] = (df_pie['매출액'] / total_sales) * 100
     
-    fig = px.pie(df_pie, 
+    # [수정] 5% 미만 항목을 '기타(Etc)'로 통합하는 로직
+    major_items = df_pie[df_pie['percent'] >= 5].copy()
+    minor_items = df_pie[df_pie['percent'] < 5]
+    
+    if not minor_items.empty:
+        etc_value = minor_items['매출액'].sum()
+        etc_row = pd.DataFrame({
+            column: ['기타(Etc)'], 
+            '매출액': [etc_value], 
+            'percent': [(etc_value / total_sales) * 100]
+        })
+        df_final = pd.concat([major_items, etc_row], ignore_index=True)
+    else:
+        df_final = major_items
+    
+    # 내림차순 정렬 (기타 항목 유무와 관계없이 금액순)
+    df_final = df_final.sort_values('매출액', ascending=False)
+    
+    fig = px.pie(df_final, 
                  values='매출액', 
                  names=column, 
-                 title=f'{column}별 매출 비중',
-                 hole=0.4) # 도넛 형태
+                 title=f'{column}별 매출 비중 (5% 미만 기타 처리)',
+                 hole=0.4) 
     
-    fig.update_traces(textinfo='percent+label', pull=[0.05] * len(df_pie))
+    fig.update_traces(textinfo='percent+label', pull=[0.02] * len(df_final))
     fig.update_layout(showlegend=True)
     
     return fig
