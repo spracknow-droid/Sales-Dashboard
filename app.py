@@ -2,6 +2,7 @@ import streamlit as st
 import os
 import pandas as pd
 import plotly.graph_objects as go
+import plotly.express as px
 from data_loader import load_sqlite_db, get_table_data
 from visuals import plot_sales_trend, plot_comparison, plot_pie_chart
 
@@ -36,9 +37,37 @@ if uploaded_file:
             tab1, tab2, tab3 = st.tabs(["📈 매출 추이", "📊 실적 vs 계획 비교", "🍕 항목별 비중"])
             
             with tab1:
-                st.subheader("1) 시간 흐름에 따른 매출 실적 (판매실적 기준)")
+                st.subheader("1) 시간 흐름에 따른 매출 실적")
+                
+                # [추가] 상세 분석 기준 선택박스
+                t1_options = ["전체 매출 추이"] + [col for col in actual_df.columns if col not in config.TAB1_EXCLUDE]
+                selected_t1_cat = st.selectbox("상세 분석 기준 선택", t1_options, key="tab1_category")
+                
                 if not actual_df.empty:
-                    st.plotly_chart(plot_sales_trend(actual_df), use_container_width=True)
+                    if selected_t1_cat == "전체 매출 추이":
+                        # 기존: 전체 실적 합계 추이
+                        st.plotly_chart(plot_sales_trend(actual_df), use_container_width=True)
+                    else:
+                        # 신규: 선택한 항목별 누적 라인 차트
+                        # 월별/항목별 매출 합계 계산
+                        trend_data = actual_df.groupby(['연월', selected_t1_cat])['매출액'].sum().reset_index()
+                        
+                        # 가독성을 위해 상위 10개 항목만 필터링
+                        top_items = actual_df.groupby(selected_t1_cat)['매출액'].sum().nlargest(10).index
+                        trend_data_filtered = trend_data[trend_data[selected_t1_cat].isin(top_items)]
+                        
+                        fig = px.line(
+                            trend_data_filtered, 
+                            x='연월', 
+                            y='매출액', 
+                            color=selected_t1_cat,
+                            markers=True,
+                            title=f"상위 10개 {selected_t1_cat}별 매출 추이",
+                            template='plotly_white'
+                        )
+                        fig.update_layout(xaxis_title="연월", yaxis_title="매출액 (원)")
+                        st.plotly_chart(fig, use_container_width=True)
+                        st.info(f"항목이 많을 경우 실적 상위 10개 **{selected_t1_cat}**만 표시됩니다.")
                 else:
                     st.warning("표시할 '판매실적' 데이터가 없습니다.")
             
@@ -52,7 +81,6 @@ if uploaded_file:
                     selected_month = st.selectbox("비교할 기준 연월을 선택하세요", available_months, key="compare_month_tab2")
                 
                 with col_c:
-                    # [수정] config.TAB2_EXCLUDE 사용하여 필터링
                     tab2_options = ["월 전체 합계"] + [col for col in actual_df.columns if col not in config.TAB2_EXCLUDE]
                     selected_category = st.selectbox("상세 분석 기준 선택", tab2_options, key="compare_category_tab2")
 
@@ -94,7 +122,6 @@ if uploaded_file:
                 col1, col2 = st.columns(2)
                 
                 with col1:
-                    # [수정] config.TAB3_EXCLUDE 사용하여 필터링
                     category_options_pie = [col for col in actual_df.columns if col not in config.TAB3_EXCLUDE]
                     category_col = st.selectbox("분석 기준 컬럼 선택", category_options_pie, key="pie_category")
 
