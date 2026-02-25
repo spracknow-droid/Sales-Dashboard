@@ -33,53 +33,39 @@ if uploaded_file:
             actual_df = df[df['데이터구분'] == '판매실적']
             plan_df = df[df['데이터구분'] == '판매계획']
             
-            # --- 메인 화면 탭 구성 ---
-            tab1, tab2, tab3 = st.tabs(["📈 매출 추이", "📊 실적 vs 계획 비교", "🍕 항목별 비중"])
+            # --- 메인 화면 탭 구성 (실적 vs 실적 탭 추가) ---
+            tab1, tab2, tab4, tab3 = st.tabs(["📈 매출 추이", "📊 실적 vs 계획 비교", "🔄 실적 vs 실적 비교", "🍕 항목별 비중"])
             
+            # --- 탭 1: 매출 추이 ---
             with tab1:
                 st.subheader("1) 시간 흐름에 따른 매출 실적")
-                
-                # [추가] 상세 분석 기준 선택박스
                 t1_options = ["전체 매출 추이"] + [col for col in actual_df.columns if col not in config.TAB1_EXCLUDE]
                 selected_t1_cat = st.selectbox("상세 분석 기준 선택", t1_options, key="tab1_category")
                 
                 if not actual_df.empty:
                     if selected_t1_cat == "전체 매출 추이":
-                        # 기존: 전체 실적 합계 추이
                         st.plotly_chart(plot_sales_trend(actual_df), use_container_width=True)
                     else:
-                        # 신규: 선택한 항목별 누적 라인 차트
-                        # 월별/항목별 매출 합계 계산
                         trend_data = actual_df.groupby(['연월', selected_t1_cat])['매출액'].sum().reset_index()
-                        
-                        # 가독성을 위해 상위 10개 항목만 필터링
                         top_items = actual_df.groupby(selected_t1_cat)['매출액'].sum().nlargest(10).index
                         trend_data_filtered = trend_data[trend_data[selected_t1_cat].isin(top_items)]
                         
-                        fig = px.line(
-                            trend_data_filtered, 
-                            x='연월', 
-                            y='매출액', 
-                            color=selected_t1_cat,
-                            markers=True,
-                            title=f"상위 10개 {selected_t1_cat}별 매출 추이",
-                            template='plotly_white'
-                        )
+                        fig = px.line(trend_data_filtered, x='연월', y='매출액', color=selected_t1_cat, markers=True,
+                                      title=f"상위 10개 {selected_t1_cat}별 매출 추이", template='plotly_white')
                         fig.update_layout(xaxis_title="연월", yaxis_title="매출액 (원)")
                         st.plotly_chart(fig, use_container_width=True)
                         st.info(f"항목이 많을 경우 실적 상위 10개 **{selected_t1_cat}**만 표시됩니다.")
                 else:
                     st.warning("표시할 '판매실적' 데이터가 없습니다.")
             
+            # --- 탭 2: 실적 vs 계획 비교 ---
             with tab2:
                 st.subheader("2) 월별 실적 vs 계획 상세 비교")
-                
                 col_y, col_c = st.columns(2)
                 available_months = sorted(df['연월'].unique(), reverse=True)
                 
                 with col_y:
                     selected_month = st.selectbox("비교할 기준 연월을 선택하세요", available_months, key="compare_month_tab2")
-                
                 with col_c:
                     tab2_options = ["월 전체 합계"] + [col for col in actual_df.columns if col not in config.TAB2_EXCLUDE]
                     selected_category = st.selectbox("상세 분석 기준 선택", tab2_options, key="compare_category_tab2")
@@ -90,19 +76,16 @@ if uploaded_file:
                 if selected_category == "월 전체 합계":
                     actual_val = m_actual['매출액'].sum()
                     plan_val = m_plan['매출액'].sum()
-                    
-                    col1, col2, col3 = st.columns(3)
                     diff = actual_val - plan_val
-                    col1.metric(f"{selected_month} 총 실적", f"{actual_val:,.0f}원")
-                    col2.metric(f"{selected_month} 총 계획", f"{plan_val:,.0f}원")
-                    col3.metric("차이", f"{diff:,.0f}원", delta=float(diff))
                     
+                    c1, c2, c3 = st.columns(3)
+                    c1.metric(f"{selected_month} 총 실적", f"{actual_val:,.0f}원")
+                    c2.metric(f"{selected_month} 총 계획", f"{plan_val:,.0f}원")
+                    c3.metric("차이", f"{diff:,.0f}원", delta=float(diff))
                     st.plotly_chart(plot_comparison(df, actual_val, plan_val, f"{selected_month} 실적", f"{selected_month} 계획"), use_container_width=True)
-                
                 else:
                     act_grouped = m_actual.groupby(selected_category)['매출액'].sum().reset_index()
                     pln_grouped = m_plan.groupby(selected_category)['매출액'].sum().reset_index()
-                    
                     comp_df = pd.merge(act_grouped, pln_grouped, on=selected_category, how='outer', suffixes=('_실적', '_계획')).fillna(0)
                     comp_df.columns = [selected_category, '실적', '계획']
                     comp_df = comp_df.sort_values('실적', ascending=False).head(15)
@@ -113,26 +96,66 @@ if uploaded_file:
                     ])
                     fig.update_layout(barmode='group', title=f"{selected_month} {selected_category}별 실적 vs 계획 (Top 15)", template='plotly_white')
                     st.plotly_chart(fig, use_container_width=True)
-                    
-                    with st.expander("항목별 상세 수치 데이터 보기"):
+                    with st.expander("상세 수치 데이터 보기"):
                         st.dataframe(comp_df.style.format({'실적': '{:,.0f}', '계획': '{:,.0f}'}), use_container_width=True)
 
-            with tab3:
-                st.subheader("3) 항목별 실적 비중")
-                col1, col2 = st.columns(2)
+            # --- 탭 4: 실적 vs 실적 비교 (신규 추가) ---
+            with tab4:
+                st.subheader("3) 기간별 실적 비교 (실적 vs 실적)")
+                col_m1, col_m2, col_cat_4 = st.columns(3)
+                act_months = sorted(actual_df['연월'].unique(), reverse=True)
                 
+                with col_m1:
+                    base_month = st.selectbox("기준 연월 (A)", act_months, key="t4_base")
+                with col_m2:
+                    comp_month = st.selectbox("비교 대상 연월 (B)", act_months, index=min(1, len(act_months)-1), key="t4_comp")
+                with col_cat_4:
+                    t4_options = ["전체 합계"] + [col for col in actual_df.columns if col not in config.TAB4_EXCLUDE]
+                    selected_t4_cat = st.selectbox("비교 기준 선택", t4_options, key="t4_cat")
+
+                df_a = actual_df[actual_df['연월'] == base_month]
+                df_b = actual_df[actual_df['연월'] == comp_month]
+
+                if selected_t4_cat == "전체 합계":
+                    val_a = df_a['매출액'].sum()
+                    val_b = df_b['매출액'].sum()
+                    diff = val_a - val_b
+                    pct = (diff / val_b * 100) if val_b != 0 else 0
+                    
+                    c1, c2, c3 = st.columns(3)
+                    c1.metric(f"{base_month} 실적 (A)", f"{val_a:,.0f}원")
+                    c2.metric(f"{comp_month} 실적 (B)", f"{val_b:,.0f}원")
+                    c3.metric("증감액 (A-B)", f"{diff:,.0f}원", delta=f"{pct:.1f}%")
+                    st.plotly_chart(plot_comparison(df, val_a, val_b, base_month, comp_month), use_container_width=True)
+                else:
+                    grp_a = df_a.groupby(selected_t4_cat)['매출액'].sum().reset_index()
+                    grp_b = df_b.groupby(selected_t4_cat)['매출액'].sum().reset_index()
+                    comp_act_df = pd.merge(grp_a, grp_b, on=selected_t4_cat, how='outer', suffixes=(f'_{base_month}', f'_{comp_month}')).fillna(0)
+                    col_a, col_b = f'매출액_{base_month}', f'매출액_{comp_month}'
+                    comp_act_df = comp_act_df.sort_values(col_a, ascending=False).head(15)
+
+                    fig = go.Figure(data=[
+                        go.Bar(name=base_month, x=comp_act_df[selected_t4_cat], y=comp_act_df[col_a], marker_color='indianred', text=comp_act_df[col_a].apply(lambda x: f"{x:,.0f}"), textposition='outside'),
+                        go.Bar(name=comp_month, x=comp_act_df[selected_t4_cat], y=comp_act_df[col_b], marker_color='lightsalmon', text=comp_act_df[col_b].apply(lambda x: f"{x:,.0f}"), textposition='outside')
+                    ])
+                    fig.update_layout(barmode='group', title=f"{base_month} vs {comp_month} {selected_t4_cat}별 실적 비교 (Top 15)", template='plotly_white')
+                    st.plotly_chart(fig, use_container_width=True)
+                    with st.expander("증감 상세 데이터 보기"):
+                        comp_act_df['증감액'] = comp_act_df[col_a] - comp_act_df[col_b]
+                        st.dataframe(comp_act_df.style.format({col_a: '{:,.0f}', col_b: '{:,.0f}', '증감액': '{:,.0f}'}), use_container_width=True)
+
+            # --- 탭 3: 항목별 비중 ---
+            with tab3:
+                st.subheader("4) 항목별 실적 비중")
+                col1, col2 = st.columns(2)
                 with col1:
                     category_options_pie = [col for col in actual_df.columns if col not in config.TAB3_EXCLUDE]
                     category_col = st.selectbox("분석 기준 컬럼 선택", category_options_pie, key="pie_category")
-
                 with col2:
                     pie_months = ["전체 누적"] + sorted(df['연월'].unique(), reverse=True)
                     selected_period = st.selectbox("분석 대상 기간 선택", pie_months, key="pie_period")
 
-                if selected_period == "전체 누적":
-                    filtered_pie_df = actual_df
-                else:
-                    filtered_pie_df = actual_df[actual_df['연월'] == selected_period]
+                filtered_pie_df = actual_df if selected_period == "전체 누적" else actual_df[actual_df['연월'] == selected_period]
                 
                 if not filtered_pie_df.empty:
                     st.plotly_chart(plot_pie_chart(filtered_pie_df, category_col), use_container_width=True)
