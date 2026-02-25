@@ -1,5 +1,6 @@
 import streamlit as st
 import os
+import pandas as pd
 from data_loader import load_sqlite_db, get_table_data
 from visuals import plot_sales_trend, plot_comparison, plot_pie_chart
 
@@ -20,6 +21,9 @@ if uploaded_file:
         if df is not None and not df.empty:
             st.sidebar.success("데이터 로드 및 표준화 완료!")
             
+            # 전처리를 위한 연월 컬럼 생성
+            df['연월'] = df['날짜'].dt.to_period('M').astype(str)
+            
             # 데이터 분리 (실적 vs 계획)
             actual_df = df[df['데이터구분'] == '판매실적']
             plan_df = df[df['데이터구분'] == '판매계획']
@@ -30,31 +34,44 @@ if uploaded_file:
             with tab1:
                 st.subheader("1) 시간 흐름에 따른 매출 실적 (판매실적 기준)")
                 if not actual_df.empty:
-                    # visuals.py의 plot_sales_trend 호출
                     st.plotly_chart(plot_sales_trend(actual_df), use_container_width=True)
                 else:
                     st.warning("표시할 '판매실적' 데이터가 없습니다.")
             
             with tab2:
-                st.subheader("2) 실적 vs 계획 비교 (막대 그래프)")
+                st.subheader("2) 월별 실적 vs 계획 상세 비교")
                 
-                # 비교를 위한 데이터 집계 (전체 합계 기준 예시)
-                total_actual = actual_df['매출액'].sum()
-                total_plan = plan_df['매출액'].sum()
+                # 데이터에 존재하는 연월 리스트 추출 (최신순 정렬)
+                available_months = sorted(df['연월'].unique(), reverse=True)
                 
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.metric("총 실적 합계", f"{total_actual:,.0f}원")
-                with col2:
-                    st.metric("총 계획 합계", f"{total_plan:,.0f}원")
-                
-                # visuals.py의 plot_comparison 호출
-                st.plotly_chart(plot_comparison(df, total_actual, total_plan, "판매실적", "판매계획"), use_container_width=True)
+                if available_months:
+                    # 사용자로부터 비교할 기준 월 선택 받기
+                    selected_month = st.selectbox("비교할 기준 연월을 선택하세요", available_months)
+                    
+                    # 선택된 월에 해당하는 데이터 필터링
+                    m_actual = actual_df[actual_df['연월'] == selected_month]
+                    m_plan = plan_df[plan_df['연월'] == selected_month]
+                    
+                    # 해당 월의 합계 계산
+                    actual_val = m_actual['매출액'].sum()
+                    plan_val = m_plan['매출액'].sum()
+                    
+                    # 대시보드 상단 수치 요약 (Metric)
+                    col1, col2, col3 = st.columns(3)
+                    diff = actual_val - plan_val
+                    
+                    col1.metric(f"{selected_month} 실적", f"{actual_val:,.0f}원")
+                    col2.metric(f"{selected_month} 계획", f"{plan_val:,.0f}원")
+                    col3.metric("차이 (실적-계획)", f"{diff:,.0f}원", delta=float(diff))
+                    
+                    # 시각화 함수 호출 (선택된 월 정보 전달)
+                    st.plotly_chart(plot_comparison(df, actual_val, plan_val, f"{selected_month} 실적", f"{selected_month} 계획"), use_container_width=True)
+                else:
+                    st.info("비교할 월별 데이터가 없습니다.")
                 
             with tab3:
                 st.subheader("3) 항목별 실적 비중")
-                # 비중은 보통 실적(actual_df)을 기준으로 분석합니다.
-                category_options = [col for col in actual_df.columns if col not in ['날짜', '매출액', '장부금액', '데이터구분', '매출일', '계획년월']]
+                category_options = [col for col in actual_df.columns if col not in ['날짜', '매출액', '장부금액', '데이터구분', '매출일', '계획년월', '연월']]
                 category_col = st.selectbox("분석 기준 컬럼 선택", category_options if category_options else actual_df.columns)
                 
                 if not actual_df.empty:
