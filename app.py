@@ -40,23 +40,17 @@ if uploaded_file:
             
             with tab2:
                 st.subheader("2) 월별 실적 vs 계획 상세 비교")
-                
-                # 데이터에 존재하는 연월 리스트 추출 (최신순 정렬)
                 available_months = sorted(df['연월'].unique(), reverse=True)
                 
                 if available_months:
-                    # 사용자로부터 비교할 기준 월 선택 받기
-                    selected_month = st.selectbox("비교할 기준 연월을 선택하세요", available_months)
+                    selected_month = st.selectbox("비교할 기준 연월을 선택하세요", available_months, key="compare_month")
                     
-                    # 선택된 월에 해당하는 데이터 필터링
                     m_actual = actual_df[actual_df['연월'] == selected_month]
                     m_plan = plan_df[plan_df['연월'] == selected_month]
                     
-                    # 해당 월의 합계 계산
                     actual_val = m_actual['매출액'].sum()
                     plan_val = m_plan['매출액'].sum()
                     
-                    # 대시보드 상단 수치 요약 (Metric)
                     col1, col2, col3 = st.columns(3)
                     diff = actual_val - plan_val
                     
@@ -64,7 +58,6 @@ if uploaded_file:
                     col2.metric(f"{selected_month} 계획", f"{plan_val:,.0f}원")
                     col3.metric("차이 (실적-계획)", f"{diff:,.0f}원", delta=float(diff))
                     
-                    # 시각화 함수 호출 (선택된 월 정보 전달)
                     st.plotly_chart(plot_comparison(df, actual_val, plan_val, f"{selected_month} 실적", f"{selected_month} 계획"), use_container_width=True)
                 else:
                     st.info("비교할 월별 데이터가 없습니다.")
@@ -72,41 +65,48 @@ if uploaded_file:
             with tab3:
                 st.subheader("3) 항목별 실적 비중")
                 
-                # 분석에서 제외할 컬럼 리스트 (기술적 항목 및 불필요한 항목)
-                exclude_cols = [
-                    '날짜', '매출액', '장부금액', '데이터구분', '매출일', '계획년월', '연월',
-                    'WBS번호', 'SET모품목', '사업부', '부가세사업장', '세무분류', 
-                    '제품군', '수출신고번호', 'L_C번호', 'B_L번호', 'No', '수익성계획전표번호',
-                    '계획버전', '공장', '내수_수출', '국가코드', '고객그룹', '수량',
-                    '환율','판매단가','장부단가','판매금액','송장번호','전표번호','부가세',
-                    '총금액','매출번호','출고번호','수금예정일','매출유형','영업문서범주코드',
-                    '헤더비고','매출처','품목','수금처','규격','매출순번','단위',
-                    '부가세포함단가','품목범주','영업조직','거래처소분류','영업담당자',
-                    '판매지역','납품처','채권_전표_상태','수주라인비고','수주헤더비고',
-                    '영업담당자명','수불유형','매출상태','고객자재코드','수주번호',
-                    '수주순번','납품일정순번','출고순번','출고일','납품지시번호',
-                    '부가세포함금액','버전','비용센터','WBS명','손익전표번호','비고'
-                    
-                ]
+                # 시점 및 기준 선택을 위한 레이아웃
+                col1, col2 = st.columns(2)
                 
-                # 제외 목록을 뺀 나머지 컬럼만 필터링
-                category_options = [col for col in actual_df.columns if col not in exclude_cols]
-                
-                if category_options:
-                    category_col = st.selectbox("분석 기준 컬럼 선택", category_options)
-                    
-                    if not actual_df.empty:
-                        st.plotly_chart(plot_pie_chart(actual_df, category_col), use_container_width=True)
-                    else:
-                        st.warning("비중을 계산할 실적 데이터가 없습니다.")
+                with col1:
+                    # 분석에서 제외할 컬럼 리스트 (기존 제외 로직 유지)
+                    exclude_cols = [
+                        '날짜', '매출액', '장부금액', '데이터구분', '매출일', '계획년월', '연월',
+                        'WBS번호', 'SET모품목', '사업부', '부가세사업장', '세무분류', 
+                        '제품군', '수출신고번호', 'L_C번호', 'B_L번호', 'No', '수익성계획전표번호',
+                        '계획버전', '공장', '내수_수출', '국가코드', '고객그룹', '수량',
+                        '환율','판매단가','장부단가','판매금액','송장번호','전표번호','부가세',
+                        '총금액','매출번호','출고번호','수금예정일','매출유형','영업문서범주코드',
+                        '헤더비고','매출처','품목','수금처','규격','매출순번','단위',
+                        '부가세포함단가','품목범주','영업조직','거래처소분류','영업담당자',
+                        '판매지역','납품처','채권_전표_상태','수주라인비고','수주헤더비고',
+                        '영업담당자명','수불유형','매출상태','고객자재코드','수주번호',
+                        '수주순번','납품일정순번','출고순번','출고일','납품지시번호',
+                        '부가세포함금액','버전','비용센터','WBS명','손익전표번호','비고'
+                    ]
+                    category_options = [col for col in actual_df.columns if col not in exclude_cols]
+                    category_col = st.selectbox("분석 기준 컬럼 선택", category_options, key="pie_category")
+
+                with col2:
+                    # 기준 연월 선택 (전체 보기 옵션 추가)
+                    pie_months = ["전체 누적"] + sorted(df['연월'].unique(), reverse=True)
+                    selected_period = st.selectbox("분석 대상 기간 선택", pie_months, key="pie_period")
+
+                # 선택된 기간에 따른 데이터 필터링
+                if selected_period == "전체 누적":
+                    filtered_pie_df = actual_df
                 else:
-                    st.info("분석 가능한 항목 컬럼이 없습니다.")
+                    filtered_pie_df = actual_df[actual_df['연월'] == selected_period]
+                
+                if not filtered_pie_df.empty:
+                    st.plotly_chart(plot_pie_chart(filtered_pie_df, category_col), use_container_width=True)
+                else:
+                    st.warning(f"{selected_period}에 해당하는 실적 데이터가 없습니다.")
 
             # 데이터 테이블 확인
             with st.expander("표준화된 데이터 미리보기"):
                 st.dataframe(df.head(100))
         
-        # DB 연결 종료
         conn.close()
 else:
     st.info("왼쪽 사이드바에서 SQLite DB 파일을 업로드해 주세요.")
